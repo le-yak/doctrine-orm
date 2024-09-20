@@ -465,8 +465,9 @@ EOPHP;
         $initializer      = $this->createLazyInitializer($class, $entityPersister, $this->identifierFlattener);
         $proxyClassName   = $this->loadProxyClass($class);
         $identifierFields = array_intersect_key($class->getReflectionProperties(), $identifiers);
+        $em               = $this->em;
 
-        $proxyFactory = Closure::bind(static function (array $identifier) use ($initializer, $skippedProperties, $identifierFields, $className): InternalProxy {
+        $proxyFactory = Closure::bind(static function (array $identifier) use ($initializer, $skippedProperties, $identifierFields, $className, $class, $em): InternalProxy {
             $proxy = self::createLazyGhost(static function (InternalProxy $object) use ($initializer, $identifier): void {
                 $initializer($object, $identifier);
             }, $skippedProperties);
@@ -476,7 +477,17 @@ EOPHP;
                     throw ORMInvalidArgumentException::missingPrimaryKeyValue($className, $idField);
                 }
 
-                $reflector->setValue($proxy, $identifier[$idField]);
+                assert($reflector !== null);
+
+                $idValue = $identifier[$idField];
+                if ($class->hasAssociation($idField)) {
+                    $idValue = $em->getReference(
+                        $class->getAssociationTargetClass($idField),
+                        $idValue,
+                    );
+                }
+
+                $reflector->setValue($proxy, $idValue);
             }
 
             return $proxy;
